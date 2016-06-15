@@ -1,0 +1,342 @@
+// モザイク部分に使う画像は自動でリサイズしちゃうよ
+// 完成した画像は画面表示より大きいサイズで保存できます
+
+#define tn "モザイクアート作成機"
+#packopt name tn
+#packopt hide 1
+
+zoomRate = 8	// 完成画像の拡大率（整数）
+mosaicNumX = 60	// モザイク横個数
+mosaicNumY = 45	// モザイク縦個数
+
+;-------------------------------------------------------------
+
+sx = 0 : sy = 0 : path = ""
+mosaicFlg = 0 : pathFlg = 0
+
+screen 0, 320, 240, , 50, 50
+title tn
+;redraw 0
+;color 255, 255, 255 : boxf
+;redraw
+font "メイリオ", 16
+objmode 2
+objsize 300, 32
+pos 10, 10
+button "画像の選択", *bt
+pos 10, 10 + 42
+button "モザイキング", *bt
+pos 10, 10 + 42 * 2
+button "モザイクに使用する画像指定", *bt
+;pos 10, 10 + 42 * 2 + 32 + 3
+;color : mes "画像フォルダ：(未指定)"
+pos 10, 240 - 42 * 2
+button "モザイクアート作成", *bt
+pos 10, 240 - 42
+button "完成した画像を保存", *bt
+
+gosub *drawPath
+
+objenable 1, 0
+objenable 2, 0
+objenable 3, 0
+objenable 4, 0
+
+stop
+
+*drawPath
+	redraw 0
+	color 255, 255, 255 : boxf
+	pos 10, 10 + 42 * 2 + 32 + 3
+	sdim tmp
+	split path, "\\", tmp
+	tmpPath = tmp(length(tmp) - 1)
+	if tmpPath = "" & length(tmp) > 1 : tmpPath = tmp(length(tmp) - 2)
+	color : mes "画像フォルダ：" + tmpPath
+	redraw
+	return
+
+*bt
+	switch stat
+	case 0
+		dialog "jpg;*.png;*.bmp", 16, "画像ファイル"
+		if stat ! 0{
+			screen 1, 1, 1, , 320 + 50 + 30, 50
+			title getpath(refstr, 8)
+			picload refstr
+			sx = ginfo_sx * zoomRate
+			sy = ginfo_sy * zoomRate
+			buffer 2, sx, sy
+			gzoom sx, sy, 1, 0, 0, sx / zoomRate, sy / zoomRate, 1
+			gsel 0
+			
+			objenable 1, 1
+			objenable 2, 1
+			objenable 3, 0
+			objenable 4, 0
+			mosaicFlg = 0
+		}
+		swbreak
+	
+	case 1
+		gsel 0
+		objenable 0, 0
+		objenable 1, 0
+		objenable 2, 0
+		objenable 3, 0
+		objenable 4, 0
+	
+		// モザイクに使った色を保持しておく
+		dim mosaic_r, mosaicNumX, mosaicNumY
+		dim mosaic_g, mosaicNumX, mosaicNumY
+		dim mosaic_b, mosaicNumX, mosaicNumY
+		
+		gsel 1
+		title "処理中..."
+		// 各ブロックの平均色を取り出して当てはめていく
+		for j, 0, mosaicNumY
+			for i, 0, mosaicNumX
+				r = 0 : g = 0 : b = 0 : num = 0
+				for n, (sy / zoomRate) * j / mosaicNumY, (sy / zoomRate) * (j + 1) / mosaicNumY
+					for m, (sx / zoomRate) * i / mosaicNumX, (sx / zoomRate) * (i + 1) / mosaicNumX
+						pget m, n
+						r += ginfo_r
+						g += ginfo_g
+						b += ginfo_b
+						color
+						pset m, n
+						num++
+					next
+					await
+				next
+				r = int((1.0 * r + 0.5) / num)
+				g = int((1.0 * g + 0.5) / num)
+				b = int((1.0 * b + 0.5) / num)
+				color r, g, b
+				boxf (sx / zoomRate) * i / mosaicNumX, (sy / zoomRate) * j / mosaicNumY, (sx / zoomRate) * (i + 1) / mosaicNumX - 1, (sy / zoomRate) * (j + 1) / mosaicNumY - 1
+				mosaic_r(i, j) = r
+				mosaic_g(i, j) = g
+				mosaic_b(i, j) = b
+				wait 1
+			next
+		next
+		title "モザイキング完了"
+		gsel 2
+		gzoom sx, sy, 1, 0, 0, sx / zoomRate, sy / zoomRate, 1
+	
+		dialog "モザイキング完了です。"
+	
+		gsel 0
+		objenable 0, 1
+		objenable 1, 1
+		objenable 2, 1
+		mosaicFlg = 1
+		if pathFlg = 1{
+			objenable 3, 1
+		}
+		swbreak
+	
+	case 2
+		dialog "画像の含まれたフォルダを選択し、\nその中の適当な画像を選択してください。\n選択画像に関わらず、その画像が含まれたフォルダを\nモザイクに使用する画像とします。", , "モザイクに使う画像フォルダの指定"
+		dialog "jpg;*.png;*.bmp", 16, "画像ファイル"
+		if stat ! 0{
+			gsel 0
+			objenable 0, 0
+			objenable 1, 0
+			objenable 2, 0
+			objenable 3, 0
+			objenable 4, 0
+			
+			pathTmp = getpath(refstr, 32)
+			list = ""
+			dirlist list_jpg, "*.jpg", 0
+			dirlist list_png, "*.png", 0
+			dirlist list_bmp, "*.bmp", 0
+			list = list_jpg + list_png + list_bmp
+			notesel list
+			listNum = notemax
+			if listNum = 0{
+				dialog "画像が見つかりませんでした。", 1, "モザイクに使う画像フォルダの指定"
+			}
+			else{
+				dialog "" + notemax + "個の画像を発見しました。\nすべての画像の色調を取得します。\n画像数が多い場合は注意してください。", 2, "モザイクに使う画像フォルダの指定"
+				if stat = 6{
+					// すべての画像の色調取得
+					
+					dim list_r, listNum
+					dim list_g, listNum
+					dim list_b, listNum
+					
+					notesel list
+					repeat listNum
+						noteget file, cnt
+						buffer 6, 1, 1
+						picload file
+	
+						igx = ginfo_sx
+						igy = ginfo_sy
+						if 1.0 * sx / mosaicNumX * mosaicNumY / sy >= 1.0 * igx / igy{
+							isx = igx
+							isy = isx * sy / mosaicNumY * mosaicNumX / sx
+							ix = 0
+							iy = (igy - isy) / 2
+						}else{
+							isy = igy
+							isx = isy * sx / mosaicNumX * mosaicNumY / sy
+							ix = (igx - isx) / 2
+							iy = 0
+						}
+						screen 3, sx / mosaicNumX, sy / mosaicNumY
+						pos 0, 0
+						gzoom sx / mosaicNumX, sy / mosaicNumY, 6, ix, iy, isx, isy, 1
+						
+						title "色調取得中(" + cnt + "/" + listNum + ")"
+						r = 0 : g = 0 : b = 0 : num = 0
+						for j, 0, ginfo_sy
+							for i, 0, ginfo_sx
+								pget i, j
+								r += ginfo_r
+								g += ginfo_g
+								b += ginfo_b
+								num++
+								color int((1.0 * r + 0.5) / num), int((1.0 * g + 0.5) / num), int((1.0 * b + 0.5) / num)
+								pset i, j
+							next
+							await
+						next
+						list_r.cnt = int((1.0 * r + 0.5) / num)
+						list_g.cnt = int((1.0 * g + 0.5) / num)
+						list_b.cnt = int((1.0 * b + 0.5) / num)
+					loop
+					
+					gsel 1, 1
+					gsel 3, -1
+					dialog "色調取得完了です。", , tn
+		
+					gsel 0
+					objenable 0, 1
+					objenable 1, 1
+					objenable 2, 1
+					
+					pathFlg = 1
+					if mosaicFlg = 1{
+						objenable 3, 1
+					}
+					path = pathTmp
+					gosub *drawPath
+				}else{
+					gsel 0
+					objenable 0, 1
+					objenable 1, 1
+					objenable 2, 1
+					
+					if mosaicFlg = 1 & pathFlg = 1{
+						objenable 3, 1
+					}
+				}
+			}
+		}
+		swbreak
+	
+	case 3
+		gsel 0
+		objenable 0, 0
+		objenable 1, 0
+		objenable 2, 0
+		objenable 3, 0
+		objenable 4, 0
+		
+		chdir path
+	
+		dim id, mosaicNumX, mosaicNumY
+		
+		gsel 1
+		title "割り当て画像の決定中"
+		for j, 0, mosaicNumY
+			for i, 0, mosaicNumX
+				minValue = 999999	// 最小値
+				idTmp = 0 // 最小値となる画像番号
+				repeat listNum
+					value = (mosaic_r(i, j) - list_r.cnt) * (mosaic_r(i, j) - list_r.cnt)
+					value += (mosaic_g(i, j) - list_g.cnt) * (mosaic_g(i, j) - list_g.cnt)
+					value += (mosaic_b(i, j) - list_b.cnt) * (mosaic_b(i, j) - list_b.cnt)
+					if value < minValue{
+						minValue = value
+						idTmp = cnt
+					}
+				loop
+				color
+				pos (sx / zoomRate) * i / mosaicNumX + 1, (sy / zoomRate) * j / mosaicNumY + 1
+				color 255, 255, 255
+				pos (sx / zoomRate) * i / mosaicNumX, (sy / zoomRate) * j / mosaicNumY
+				mes idTmp
+				id(i, j) = idTmp
+			next
+			await
+		next
+	
+		notesel list
+		repeat listNum
+			gsel 1
+			title "画像当てはめ中(" + cnt + "/" + listNum + ")"
+			noteget file, cnt
+			buffer 4, 1, 1
+			picload file
+			igx = ginfo_sx
+			igy = ginfo_sy
+			if 1.0 * sx / mosaicNumX * mosaicNumY / sy >= 1.0 * igx / igy{
+				isx = igx
+				isy = isx * sy / mosaicNumY * mosaicNumX / sx
+				ix = 0
+				iy = (igy - isy) / 2
+			}else{
+				isy = igy
+				isx = isy * sx / mosaicNumX * mosaicNumY / sy
+				ix = (igx - isx) / 2
+				iy = 0
+			}
+		
+			gsel 2
+			for j, 0, mosaicNumY
+				for i, 0, mosaicNumX
+					if id(i, j) = cnt{
+						pos sx * i / mosaicNumX, sy * j / mosaicNumY
+						gx = sx * (i + 1) / mosaicNumX - sx * i / mosaicNumX
+						gy = sy * (j + 1) / mosaicNumY - sy * j / mosaicNumY
+						gzoom gx, gy, 4, ix, iy, isx, isy, 1
+					}
+				next
+				await
+			next
+			
+			gsel 1
+			pos 0, 0
+			gzoom sx / zoomRate, sy / zoomRate, 2, 0, 0, sx, sy, 1
+			await
+		loop
+		
+		gsel 1
+		title "モザイクアート完成"
+		dialog "完了しました。", , tn
+	
+		gsel 0
+		objenable 0, 1
+		objenable 1, 1
+		objenable 2, 1
+		objenable 3, 1
+		objenable 4, 1
+		
+		swbreak
+	
+	case 4
+		dialog "", 17
+		if stat ! 0{
+			gsel 2
+			bmpsave getpath(refstr, 1) + ".bmp"
+			dialog "保存しました。", , tn
+		}
+			
+		swbreak
+		
+	swend
+
